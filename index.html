@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pop Quiz Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better visual feedback */
+        .option-button {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .option-button:hover {
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+        .correct {
+            background-color: #10B981 !important; /* Green 500 */
+            color: white !important;
+            border-color: #059669 !important;
+        }
+        .incorrect {
+            background-color: #EF4444 !important; /* Red 500 */
+            color: white !important;
+            border-color: #DC2626 !important;
+        }
+        .tab-button.active {
+            border-color: #4F46E5;
+            color: #4F46E5;
+            background-color: #EEF2FF; /* Indigo 50 */
+        }
+        .tab-button {
+            transition: all 0.15s;
+            border-bottom-width: 2px;
+            white-space: nowrap;
+        }
+        /* Style for disabled navigation buttons */
+        .nav-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans p-4 sm:p-8">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 z-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <p class="ml-4 text-indigo-600">Loading...</p>
+    </div>
+
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-8 text-center">
+            Pop Quiz Manager <span class="text-indigo-600">v2.3 (With Canvas Parser & Dupe Check)</span>
+        </h1>
+
+        <div class="mb-6 p-4 bg-white shadow-md rounded-lg text-sm">
+            <p class="text-gray-700">Database Ready: <span id="auth-status" class="font-semibold text-red-500">Connecting...</span></p>
+            <p class="text-gray-700">Your User ID (for sharing data): <span id="user-id-display" class="font-mono text-xs bg-gray-100 p-1 rounded">Waiting for auth...</span></p>
+        </div>
+
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">1. Create/Parse Quizzes</h2>
+
+            <div class="flex border-b border-gray-200 mb-4 overflow-x-auto">
+                <button data-format="answer-key" class="tab-button px-4 py-2 text-sm font-medium active">
+                    Format 1: (Đáp án: A, C)
+                </button>
+                <button data-format="asterisk-mark" class="tab-button px-4 py-2 text-sm font-medium">
+                    Format 2: Asterisk (*) Mark (Supports multi-question)
+                </button>
+                 <button data-format="canvas" class="tab-button px-4 py-2 text-sm font-medium">
+                    Format 3: Canvas (Dùng * đánh dấu)
+                </button>
+            </div>
+            
+            <textarea id="raw-quiz-input" rows="8" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700" placeholder="Paste your quiz text here.
+
+Format 1 Example (Single Question):
+Question text?
+A. Option 1
+B. Option 2
+C. Option 3
+(Đáp án: A, C)
+
+Format 2 Example (Multiple Questions):
+Câu 1: Question text 1
+A. Option A *
+B. Option B
+C. Option C
+Câu 2: Question text 2
+A. Option A
+B. Option B *
+C. Option C *"></textarea>
+
+            <div id="input-error" class="text-red-600 mt-2 hidden"></div>
+
+            <div class="mt-4 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                <button id="parse-button" class="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md">
+                    Parse & Preview Quizzes
+                </button>
+                <button id="save-button" class="w-full sm:w-auto px-6 py-3 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition duration-150 shadow-md hidden" disabled>
+                    Save All <span id="quiz-count-display">0</span> Quizzes
+                </button>
+                
+                <input type="file" id="json-import-file" accept=".json" class="hidden">
+                <button id="import-button" class="w-full sm:w-auto px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition duration-150 shadow-md">
+                    Import from JSON
+                </button>
+                
+                <button id="export-button" class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-150 shadow-md hidden" disabled>
+                    Download/Export <span id="export-count-display">0</span> Quizzes (JSON)
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">
+                2. Quiz Preview / Test 
+                <span id="preview-status" class="text-base text-indigo-600 font-normal">(Question <span id="current-quiz-index-display">0</span> of <span id="preview-count">0</span>)</span>
+            </h2>
+            
+            <div id="quiz-actions" class="flex justify-between items-center mb-4 space-x-2 hidden">
+                <div class="flex space-x-2">
+                    <button id="prev-button" class="nav-button px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150" disabled>
+                        &larr; Previous
+                    </button>
+                    <button id="next-button" class="nav-button px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150" disabled>
+                        Next &rarr;
+                    </button>
+                </div>
+                <button id="remove-button" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150">
+                    Remove from Batch (&#x2715;)
+                </button>
+            </div>
+            
+            <div id="quiz-test-area" class="space-y-12">
+                <p class="text-gray-500 italic">Paste text and click "Parse & Preview Quizzes" to see the interactive forms here.</p>
+            </div>
+            <div id="quiz-message" class="mt-4 text-center p-3 rounded-lg hidden"></div>
+        </div>
+
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">3. Saved Quizzes (CRUD Operations)</h2>
+            <p class="text-sm text-gray-500 mb-4">Your quizzes are saved privately using your User ID.</p>
+            <div id="saved-quizzes-list" class="space-y-4">
+                <p class="text-gray-500 italic">No quizzes saved yet, or connecting to the database...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase variables will be populated here
+        let app, db, auth, userId;
+        const QUIZ_COLLECTION = 'quizzes';
+
+        // --- Firebase Configuration & Setup for Local Resilience ---
+        let firebaseConfig = {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (configString.length > 2) {
+            try {
+                firebaseConfig = JSON.parse(configString);
+            } catch (e) {
+                console.error("Error parsing __firebase_config. It might be an invalid JSON string.", e);
+            }
+        } else {
+            // Provide a dummy configuration to prevent initializeApp from failing 
+            // with 'invalid-argument' when run locally without env variables.
+            firebaseConfig = { apiKey: "dummy", authDomain: "dummy", projectId: "dummy" };
+            console.warn("Running locally without Canvas environment variables. Database functionality will fail unless you provide a valid Firebase configuration object.");
+        }
+        // -----------------------------------------------------------
+
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const authStatus = document.getElementById('auth-status');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const savedQuizzesList = document.getElementById('saved-quizzes-list');
+        const quizTestArea = document.getElementById('quiz-test-area');
+        const quizMessage = document.getElementById('quiz-message');
+        const saveButton = document.getElementById('save-button');
+        const parseButton = document.getElementById('parse-button');
+        const exportButton = document.getElementById('export-button'); 
+        const importButton = document.getElementById('import-button');
+        const jsonImportFile = document.getElementById('json-import-file');
+        const inputError = document.getElementById('input-error');
+        const rawQuizInput = document.getElementById('raw-quiz-input');
+        const quizCountDisplay = document.getElementById('quiz-count-display');
+        const previewCountDisplay = document.getElementById('preview-count');
+        const exportCountDisplay = document.getElementById('export-count-display'); 
+        const tabButtons = document.querySelectorAll('.tab-button');
+        
+        // New elements for navigation/action
+        const quizActionsContainer = document.getElementById('quiz-actions');
+        const prevButton = document.getElementById('prev-button');
+        const nextButton = document.getElementById('next-button');
+        const removeButton = document.getElementById('remove-button');
+        const currentQuizIndexDisplay = document.getElementById('current-quiz-index-display');
+
+        // State for the currently parsed quiz batch
+        let currentQuizBatch = [];
+        let currentQuizIndex = 0; // Index of the quiz currently being displayed
+        let currentFormat = 'answer-key';
+
+        // --- Helper Functions ---
+
+        /** Shows a temporary message in the quiz message area. */
+        function showMessage(text, isError = false) {
+            quizMessage.textContent = text;
+            quizMessage.className = `mt-4 text-center p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            quizMessage.classList.remove('hidden');
+            setTimeout(() => quizMessage.classList.add('hidden'), 5000);
+        }
+        
+        /** Allows the user to download data as a JSON file. */
+        function exportJsonFile(data, filename = 'quizzes.json') {
+            try {
+                const json = JSON.stringify(data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showMessage(`Successfully exported ${data.length} quizzes to ${filename}!`);
+            } catch (e) {
+                console.error("Error exporting file:", e);
+                showMessage("Failed to export quizzes. Check console for details.", true);
+            }
+        }
+        
+        /**
+         * Validates and normalizes imported JSON data structure.
+         * The structure must match the saved format: { question: string, options: array, correctAnswers: array }
+         * @param {Array<Object>} importedData 
+         * @returns {Array<Object> | null} Validated batch or null on failure.
+         */
+        function validateAndNormalizeImportedData(importedData) {
+            if (!Array.isArray(importedData)) {
+                showMessage("Import Error: File content must be a JSON array of quizzes.", true);
+                return null;
+            }
+            
+            const validBatch = [];
+            let errorCount = 0;
+            
+            importedData.forEach(quiz => {
+                const isValid = quiz.question && 
+                                Array.isArray(quiz.options) && 
+                                quiz.options.every(opt => opt.key && opt.text) &&
+                                Array.isArray(quiz.correctAnswers) &&
+                                quiz.correctAnswers.length > 0;
+                                
+                if (isValid) {
+                    // Ensure options have the isCorrect flag for preview rendering
+                    const normalizedOptions = quiz.options.map(opt => ({
+                        key: opt.key,
+                        text: opt.text,
+                        isCorrect: quiz.correctAnswers.includes(opt.key)
+                    }));
+                    validBatch.push({
+                        ...quiz,
+                        options: normalizedOptions
+                    });
+                } else {
+                    errorCount++;
+                }
+            });
+            
+            if (errorCount > 0) {
+                showMessage(`Warning: ${errorCount} quiz(zes) were invalid and skipped during import.`, true);
+            }
+            
+            return validBatch.length > 0 ? validBatch : null;
+        }
+
+
+        // --- Tab Logic ---
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                currentFormat = button.getAttribute('data-format');
+                
+                // Update placeholder text based on selected format
+                if (currentFormat === 'answer-key') {
+                    rawQuizInput.placeholder = `Paste your quiz text here.
+
+Format 1 Example (Single Question):
+Question text?
+A. Option 1
+B. Option 2
+C. Option 3
+(Đáp án: A, C)`;
+                } else if (currentFormat === 'asterisk-mark') {
+                    rawQuizInput.placeholder = `Paste your quiz text here.
+
+Format 2 Example (Multiple Questions):
+Câu 1: Question text 1
+A. Option A *
+B. Option B
+C. Option C
+Câu 2: Question text 2
+A. Option A
+B. Option B *
+C. Option C *`;
+                } else if (currentFormat === 'canvas') {
+                    rawQuizInput.placeholder = `Dán nội dung bài kiểm tra Canvas (đã sao chép) vào đây.
+Lưu ý: Bạn PHẢI tự thêm dấu sao (*) vào cuối câu trả lời đúng.
+
+Ví dụ Format 3 (Canvas Copy):
+Question 1
+0.3 / 0.3 pts
+Chủ nghĩa Mác - Lênin gồm những bộ phận nào hợp thành?
+ Triết học, Kinh tế chính trị học và Chủ nghĩa xã hội không tưởng.
+ Triết học, Kinh tế học và Chủ nghĩa xã hội khoa học.
+ Triết học Mác - Lênin, Kinh tế chính trị Mác - Lênin và Chủ nghĩa xã hội khoa học.*
+ Triết học Mác, Kinh tế chính trị và Chủ nghĩa xã hội khoa học.
+
+Question 2
+0.3 / 0.3 pts
+Kinh tế chính trị Mác – Lênin ra đời ở thế kỷ nào?
+ Thế kỷ XIX.
+ Thế kỷ XVII.
+ Thế kỷ XVIII.*
+ Thế kỷ XX.`;
+                }
+            });
+        });
+        // Initialize the first tab as active
+        document.querySelector('.tab-button[data-format="answer-key"]').classList.add('active');
+
+
+        // --- Parser Functions ---
+
+        function parseAnswerKeyFormat(rawText) {
+            const lines = rawText.trim().split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            if (lines.length < 3) { 
+                inputError.textContent = "Format 1 requires at least Question, one Option, and Answer Key ((Đáp án: X)).";
+                inputError.classList.remove('hidden');
+                return null;
+            }
+
+            const quiz = { question: "", options: [], correctAnswers: [] };
+            const optionRegex = /^([A-Z]|\d)\./;
+            const answerRegex = /\(Đáp án:\s*([A-Za-z0-9,\s]+)\)/;
+            let answerKeyLine = lines.find(line => answerRegex.test(line));
+
+            if (!answerKeyLine) {
+                 inputError.textContent = "Format 1: Could not find the Answer Key in the format (Đáp án: A) or (Đáp án: A, B).";
+                 inputError.classList.remove('hidden');
+                 return null;
+            }
+
+            // Extract question (all lines before the first option or before the answer key)
+            let questionLines = [];
+            let optionsStarted = false;
+
+            for(const line of lines) {
+                if (answerRegex.test(line)) continue; // Skip answer key line
+                if (optionRegex.test(line)) {
+                    optionsStarted = true;
+                }
+                if (!optionsStarted) {
+                    questionLines.push(line);
+                }
+            }
+            quiz.question = questionLines.join('\n').trim();
+
+            // Extract options
+            lines.forEach(line => {
+                const match = line.match(optionRegex);
+                if (match) {
+                    const key = match[1].toUpperCase();
+                    const text = line.substring(match[0].length).trim();
+                    quiz.options.push({ key, text, isCorrect: false });
+                }
+            });
+
+            // Extract and process the answer key
+            const answerMatch = answerKeyLine.match(answerRegex);
+            if (answerMatch && answerMatch[1]) {
+                const correctKeys = answerMatch[1].split(',')
+                    .map(key => key.trim().toUpperCase())
+                    .filter(key => key.length > 0);
+                quiz.correctAnswers = correctKeys;
+
+                // Update options to mark correct ones
+                quiz.options = quiz.options.map(opt => ({
+                    ...opt,
+                    isCorrect: correctKeys.includes(opt.key)
+                }));
+            } 
+
+            if (!quiz.question || quiz.options.length === 0 || quiz.correctAnswers.length === 0) {
+                inputError.textContent = "Format 1: Parsing failed. Ensure Question, Options (A. B. C.), and Answer Key are present and formatted correctly.";
+                inputError.classList.remove('hidden');
+                return null;
+            }
+
+            inputError.classList.add('hidden');
+            return [quiz]; // Return as an array for batch compatibility
+        }
+
+        function parseAsteriskFormat(rawText) {
+            const lines = rawText.trim().split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            const quizzes = [];
+            let currentQuiz = null;
+            const questionRegex = /^Câu\s*\d+\s*:(.*)/i;
+            const optionRegex = /^([A-Z])\.\s*(.*)/i;
+            const correctMarker = /\s*\*\s*$/;
+
+            if (!questionRegex.test(lines[0])) {
+                inputError.textContent = "Format 2: Input must start with 'Câu 1:'";
+                inputError.classList.remove('hidden');
+                return null;
+            }
+
+            lines.forEach(line => {
+                const qMatch = line.match(questionRegex);
+                const oMatch = line.match(optionRegex);
+
+                if (qMatch) {
+                    // New Question found, save the old one (if it exists)
+                    if (currentQuiz && currentQuiz.options.length > 0) {
+                        if (currentQuiz.correctAnswers.length === 0) {
+                             console.warn(`Question ${quizzes.length + 1} has no correct answers marked and will be skipped.`);
+                        } else {
+                            quizzes.push(currentQuiz);
+                        }
+                    }
+
+                    // Start new quiz object
+                    currentQuiz = {
+                        question: qMatch[1].trim(),
+                        options: [],
+                        correctAnswers: []
+                    };
+                } else if (oMatch && currentQuiz) {
+                    // Option found
+                    let text = oMatch[2].trim();
+                    const key = oMatch[1].toUpperCase();
+                    const isCorrect = correctMarker.test(text);
+
+                    // Clean up the text by removing the '*' marker if present
+                    if (isCorrect) {
+                        text = text.replace(correctMarker, '').trim();
+                        currentQuiz.correctAnswers.push(key);
+                    }
+
+                    currentQuiz.options.push({
+                        key,
+                        text,
+                        isCorrect // This is redundant but useful for rendering/debugging
+                    });
+                } else if (currentQuiz) {
+                    // Multi-line question text (Append to question)
+                    currentQuiz.question += ' ' + line.trim();
+                }
+            });
+
+            // Push the last processed quiz
+            if (currentQuiz && currentQuiz.options.length > 0 && currentQuiz.correctAnswers.length > 0) {
+                quizzes.push(currentQuiz);
+            }
+
+            if (quizzes.length === 0) {
+                inputError.textContent = "Format 2: Parsing failed. Could not find any valid questions (Câu N:, Options A., and at least one *).";
+                inputError.classList.remove('hidden');
+                return null;
+            }
+            inputError.classList.add('hidden');
+            return quizzes;
+        }
+
+        function parseCanvasFormat(rawText) {
+            const lines = rawText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            const quizzes = [];
+            let currentQuiz = null;
+            let state = 'WAITING_FOR_QUESTION'; // States: WAITING_FOR_QUESTION, WAITING_FOR_POINTS, READING_QUESTION, READING_OPTIONS
+            
+            const questionStartRegex = /^\s*Question\s*\d+/i; // Match "Question 1"
+            const pointMarkerRegex = /^\d+\.\d+\s*\/\s*\d+\.\d+\s*pts$/; // Match "0.3 / 0.3 pts"
+            const correctMarker = /\s*\*\s*$/; // Match asterisk marker *
+            
+            const keyMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+            let optionCounter = 0;
+
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                const isQuestionStart = questionStartRegex.test(trimmedLine);
+                const isPointMarker = pointMarkerRegex.test(trimmedLine);
+                
+                if (isQuestionStart) {
+                    // Save previous quiz
+                    if (currentQuiz && currentQuiz.options.length > 0) {
+                        if (currentQuiz.correctAnswers.length === 0) {
+                            console.warn(`Question skipped (no correct answer marked): ${currentQuiz.question.substring(0, 50)}...`);
+                        } else {
+                            quizzes.push(currentQuiz);
+                        }
+                    }
+
+                    // Start new quiz
+                    currentQuiz = { question: "", options: [], correctAnswers: [] };
+                    state = 'WAITING_FOR_POINTS';
+                    optionCounter = 0;
+                    return;
+                }
+
+                if (currentQuiz) {
+                    if (state === 'WAITING_FOR_POINTS' && isPointMarker) {
+                        // Skip the points line, move to reading the question
+                        state = 'READING_QUESTION';
+                        return;
+                    }
+
+                    // The line immediately after the points line is the question text
+                    // We also check for line length > 1 to filter out empty lines that might follow the points line
+                    if (state === 'READING_QUESTION' && trimmedLine.length > 1) {
+                        currentQuiz.question = trimmedLine;
+                        state = 'READING_OPTIONS';
+                        return;
+                    }
+
+                    // Handle options
+                    if (state === 'READING_OPTIONS' && trimmedLine.length > 1) {
+                        
+                        // Stop if we hit the start of the next question block prematurely (usually an extra empty line is fine)
+                        if (trimmedLine.match(questionStartRegex)) {
+                            state = 'WAITING_FOR_QUESTION'; // Will be handled in the next iteration
+                            return;
+                        }
+
+                        // Remove the non-breaking space ( ) or other non-letter/number space often found at the start of options in this format
+                        const optionTextWithMarker = trimmedLine.replace(/^[\s\u00a0]+/, '');
+                        
+                        // Check for the asterisk marker
+                        const isCorrect = correctMarker.test(optionTextWithMarker);
+                        let text = optionTextWithMarker;
+                        
+                        if (isCorrect) {
+                            // Clean up the text by removing the '*' marker
+                            text = text.replace(correctMarker, '').trim();
+                        }
+
+                        const currentKey = keyMap[optionCounter];
+                        if (currentKey) {
+                            currentQuiz.options.push({
+                                key: currentKey,
+                                text: text,
+                                isCorrect: isCorrect
+                            });
+                            if (isCorrect) {
+                                currentQuiz.correctAnswers.push(currentKey);
+                            }
+                            optionCounter++;
+                        }
+                    }
+                }
+            });
+
+            // Push the last processed quiz
+            if (currentQuiz && currentQuiz.options.length > 0) {
+                 if (currentQuiz.correctAnswers.length === 0) {
+                    console.warn(`Question skipped (no correct answer marked): ${currentQuiz.question.substring(0, 50)}...`);
+                } else {
+                    quizzes.push(currentQuiz);
+                }
+            }
+
+            if (quizzes.length === 0) {
+                inputError.textContent = "Format 3: Phân tích thất bại. Vui lòng đảm bảo mỗi câu hỏi bắt đầu bằng 'Question N', theo sau là văn bản câu hỏi, và đáp án đúng được đánh dấu bằng dấu sao (*).";
+                inputError.classList.remove('hidden');
+                return null;
+            }
+            inputError.classList.add('hidden');
+            return quizzes;
+        }
+
+        /**
+         * Checks for duplicate questions in the batch based on question text and options hash.
+         * @param {Array<Object>} quizBatch 
+         * @returns {Array<Object>} The batch with duplicates removed.
+         */
+        function checkForDuplicates(quizBatch) {
+            const seen = new Set();
+            const uniqueQuizzes = [];
+            let duplicateCount = 0;
+
+            quizBatch.forEach(quiz => {
+                // Create a unique key (hash) for the quiz
+                const questionKey = quiz.question.trim().toLowerCase();
+                const optionsString = quiz.options.map(o => o.text.trim().toLowerCase()).sort().join('|');
+                const uniqueId = questionKey + '||' + optionsString;
+
+                if (!seen.has(uniqueId)) {
+                    seen.add(uniqueId);
+                    uniqueQuizzes.push(quiz);
+                } else {
+                    duplicateCount++;
+                }
+            });
+
+            if (duplicateCount > 0) {
+                showMessage(`Warning: ${duplicateCount} duplicate quiz(zes) were removed from the batch.`, true);
+            }
+
+            return uniqueQuizzes;
+        }
+        
+        // --- Core Logic for Preview and Navigation ---
+
+        /** Updates the state and calls renderSingleQuiz to show the current quiz. */
+        function navigateQuiz(step) {
+            const newIndex = currentQuizIndex + step;
+
+            if (newIndex >= 0 && newIndex < currentQuizBatch.length) {
+                currentQuizIndex = newIndex;
+                renderSingleQuiz(currentQuizBatch[currentQuizIndex], currentQuizIndex);
+            }
+            updateNavigationButtons();
+        }
+
+        /** Renders a single quiz in the preview area. */
+        function renderSingleQuiz(quizData, index) {
+            quizTestArea.innerHTML = ''; // Clear previous preview
+            const quizId = `quiz-${index}`;
+
+            const quizElement = document.createElement('div');
+            quizElement.id = quizId;
+            quizElement.className = 'space-y-4';
+
+            quizElement.innerHTML = `
+                <div class="p-4 bg-gray-100 rounded-lg shadow-inner">
+                    <p class="text-lg font-bold text-indigo-700 mb-2">Question ${index + 1}:</p>
+                    <p class="text-xl font-semibold text-gray-900" id="quiz-question-${index}">${quizData.question}</p>
+                </div>
+                <div id="options-container-${index}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${quizData.options.map(option => `
+                        <button
+                            data-index="${index}"
+                            data-key="${option.key}"
+                            data-correct="${option.isCorrect}"
+                            class="option-button w-full text-left p-4 border border-gray-300 rounded-lg bg-white text-gray-800 hover:bg-indigo-50 hover:border-indigo-400 font-medium transition duration-150"
+                        >
+                            <span class="font-bold mr-2">${option.key}.</span> ${option.text}
+                        </button>
+                    `).join('')}
+                </div>
+                <div class="mt-4 text-center">
+                    <button id="check-answers-button-${index}" class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-lg">
+                        Check Answer
+                    </button>
+                    <p id="feedback-message-${index}" class="mt-3 text-lg font-semibold hidden"></p>
+                </div>
+            `;
+            quizTestArea.appendChild(quizElement);
+            attachQuizEventListeners(quizData, index);
+            updateNavigationButtons();
+        }
+        
+        /** Initial batch setup */
+        function setupQuizBatch(quizBatch) {
+            // Apply duplication check here
+            let uniqueBatch = checkForDuplicates(quizBatch);
+            
+            currentQuizBatch = uniqueBatch;
+            currentQuizIndex = 0; // Always start at the first quiz
+            
+            quizCountDisplay.textContent = uniqueBatch.length;
+            previewCountDisplay.textContent = uniqueBatch.length;
+            exportCountDisplay.textContent = uniqueBatch.length; 
+
+            if (uniqueBatch.length === 0) {
+                quizTestArea.innerHTML = '<p class="text-gray-500 italic">No quizzes parsed successfully (or all were duplicates).</p>';
+                saveButton.classList.add('hidden');
+                exportButton.classList.add('hidden');
+                quizActionsContainer.classList.add('hidden');
+                return;
+            }
+
+            saveButton.classList.remove('hidden');
+            saveButton.disabled = false;
+            exportButton.classList.remove('hidden'); 
+            exportButton.disabled = false;
+            quizActionsContainer.classList.remove('hidden');
+            
+            // Render the first quiz
+            renderSingleQuiz(currentQuizBatch[currentQuizIndex], currentQuizIndex);
+        }
+
+        /** Updates the state of the navigation buttons. */
+        function updateNavigationButtons() {
+            const count = currentQuizBatch.length;
+            
+            currentQuizIndexDisplay.textContent = count > 0 ? currentQuizIndex + 1 : 0;
+            previewCountDisplay.textContent = count;
+            
+            prevButton.disabled = currentQuizIndex === 0;
+            nextButton.disabled = currentQuizIndex >= count - 1;
+            
+            if (count <= 1) {
+                prevButton.disabled = true;
+                nextButton.disabled = true;
+                removeButton.disabled = false;
+            }
+            if (count === 0) {
+                 quizActionsContainer.classList.add('hidden');
+            }
+        }
+
+
+        /** Attaches event listeners for a single quiz in the preview area. */
+        function attachQuizEventListeners(quizData, index) {
+            const containerId = `options-container-${index}`;
+            const checkButtonId = `check-answers-button-${index}`;
+            const feedbackMessageId = `feedback-message-${index}`;
+
+            const optionsContainer = document.getElementById(containerId);
+            const checkButton = document.getElementById(checkButtonId);
+            const feedbackMessage = document.getElementById(feedbackMessageId);
+            const optionButtons = optionsContainer.querySelectorAll('.option-button');
+
+            let selectedKeys = [];
+            let answersChecked = false;
+
+            // Handle option selection
+            optionsContainer.addEventListener('click', (e) => {
+                if (answersChecked) return;
+
+                const button = e.target.closest('.option-button');
+                if (!button) return;
+
+                const key = button.getAttribute('data-key');
+                const isMultiSelect = quizData.correctAnswers.length > 1;
+
+                if (!isMultiSelect) {
+                    // Single choice: deselect others
+                    selectedKeys = [key]; 
+                    optionButtons.forEach(btn => btn.classList.remove('bg-indigo-200', 'border-indigo-600'));
+                    button.classList.add('bg-indigo-200', 'border-indigo-600');
+                } else {
+                    // Multiple choice: toggle selection
+                    const idx = selectedKeys.indexOf(key);
+                    if (idx > -1) {
+                        selectedKeys.splice(idx, 1);
+                        button.classList.remove('bg-indigo-200', 'border-indigo-600');
+                    } else {
+                        selectedKeys.push(key);
+                        button.classList.add('bg-indigo-200', 'border-indigo-600');
+                    }
+                }
+            });
+
+            // Handle "Check Answers" logic
+            checkButton.addEventListener('click', () => {
+                if (answersChecked) return;
+
+                const correctKeys = quizData.correctAnswers.sort().join(',');
+                const userSelectedKeys = selectedKeys.sort().join(',');
+                const isOverallCorrect = correctKeys === userSelectedKeys;
+
+                optionButtons.forEach(button => {
+                    const key = button.getAttribute('data-key');
+                    const isCorrectOption = button.getAttribute('data-correct') === 'true';
+                    const isUserSelected = selectedKeys.includes(key);
+
+                    button.classList.remove('bg-indigo-200', 'border-indigo-600');
+
+                    if (isCorrectOption) {
+                        button.classList.add('correct');
+                    } else if (isUserSelected && !isCorrectOption) {
+                        button.classList.add('incorrect');
+                    } else {
+                        button.classList.remove('correct', 'incorrect');
+                    }
+                });
+
+                if (isOverallCorrect) {
+                    feedbackMessage.textContent = "✅ Correct! Great job!";
+                    feedbackMessage.className = 'mt-3 text-lg font-bold text-green-600';
+                } else {
+                    feedbackMessage.textContent = `❌ Incorrect. The correct answer(s) are: ${correctKeys} (Highlighted in green).`;
+                    feedbackMessage.className = 'mt-3 text-lg font-bold text-red-600';
+                }
+                feedbackMessage.classList.remove('hidden');
+                checkButton.disabled = true;
+                answersChecked = true;
+            });
+        }
+
+
+        // --- CRUD Operations ---
+
+        /** Saves the current batch of quizzes to Firestore. (C, U) */
+        async function saveQuizBatch(quizBatch) {
+            if (!db || !userId) {
+                showMessage("Database not initialized. Please wait for connection.", true);
+                return;
+            }
+            if (quizBatch.length === 0) {
+                 showMessage("No quizzes to save.", true);
+                 return;
+            }
+
+            loadingOverlay.classList.remove('hidden');
+
+            const quizRef = collection(db, 'artifacts', appId, 'users', userId, QUIZ_COLLECTION);
+            let successCount = 0;
+            let errorCount = 0;
+            
+            try {
+                for (const quizData of quizBatch) {
+                    // Prepare data for saving
+                    const safeQuizData = {
+                        question: quizData.question,
+                        // Remove isCorrect flag from options before saving to DB
+                        options: quizData.options.map(opt => ({ key: opt.key, text: opt.text })),
+                        correctAnswers: quizData.correctAnswers,
+                        userId: userId,
+                        createdAt: new Date()
+                    };
+                    
+                    try {
+                        await addDoc(quizRef, safeQuizData);
+                        successCount++;
+                    } catch (error) {
+                        console.error("Error saving one quiz: ", error);
+                        errorCount++;
+                    }
+                }
+
+                showMessage(`Batch save finished: ${successCount} quizzes saved, ${errorCount} failed.`, errorCount > 0);
+                
+                // Clear the input and preview
+                rawQuizInput.value = '';
+                quizTestArea.innerHTML = '<p class="text-gray-500 italic">Paste text and click "Parse & Preview Quizzes" to see the interactive forms here.</p>';
+                saveButton.classList.add('hidden');
+                exportButton.classList.add('hidden');
+                quizActionsContainer.classList.add('hidden');
+                currentQuizBatch = [];
+                currentQuizIndex = 0;
+                quizCountDisplay.textContent = 0;
+                previewCountDisplay.textContent = 0;
+                exportCountDisplay.textContent = 0;
+            } catch (error) {
+                console.error("Error during batch process: ", error);
+                showMessage(`Major error during batch save. Error: ${error.message}`, true);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        /** Deletes a quiz from Firestore. (D) */
+        async function deleteQuiz(id) {
+            if (!db || !userId) return;
+            loadingOverlay.classList.remove('hidden');
+            
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', userId, QUIZ_COLLECTION, id);
+                await deleteDoc(docRef);
+                showMessage("Quiz deleted successfully!", false);
+            } catch (error) {
+                console.error("Error deleting quiz: ", error);
+                showMessage(`Failed to delete quiz. Error: ${error.message}`, true);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        /** Sets up real-time listener for saved quizzes. (R) */
+        function setupQuizListener() {
+            if (!db || !userId) return;
+
+            const quizRef = collection(db, 'artifacts', appId, 'users', userId, QUIZ_COLLECTION);
+            const q = query(quizRef);
+
+            // onSnapshot provides real-time updates (Read)
+            onSnapshot(q, (snapshot) => {
+                const quizzes = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const quizData = {
+                        id: doc.id,
+                        question: data.question,
+                        options: data.options.map(opt => ({
+                            ...opt,
+                            // Re-add the isCorrect flags for rendering/testing from the correctAnswers array
+                            isCorrect: data.correctAnswers.includes(opt.key) 
+                        })),
+                        correctAnswers: data.correctAnswers,
+                        createdAt: data.createdAt ? data.createdAt.toDate().toLocaleString() : 'N/A'
+                    };
+                    quizzes.push(quizData);
+                });
+
+                if (quizzes.length === 0) {
+                    savedQuizzesList.innerHTML = '<p class="text-gray-500 italic">No quizzes saved yet. Use the "Create" section above!</p>';
+                    return;
+                }
+
+                savedQuizzesList.innerHTML = quizzes.map(quiz => `
+                    <div class="p-4 border border-gray-200 rounded-lg bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center shadow-sm hover:shadow-md transition">
+                        <div class="flex-1 min-w-0 mb-3 md:mb-0">
+                            <p class="text-sm font-semibold text-gray-800 truncate">${quiz.question}</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Answers: <span class="font-mono text-indigo-600">${quiz.correctAnswers.join(', ')}</span> | Saved: ${quiz.createdAt}
+                            </p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button
+                                data-id="${quiz.id}"
+                                data-action="load"
+                                class="px-3 py-1 text-sm bg-indigo-500 text-white rounded-md hover:bg-indigo-600"
+                            >
+                                Load & Test
+                            </button>
+                            <button
+                                data-id="${quiz.id}"
+                                data-action="delete"
+                                class="px-3 py-1 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Attach event listeners for loading and deleting
+                savedQuizzesList.querySelectorAll('button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const id = e.target.getAttribute('data-id');
+                        const action = e.target.getAttribute('data-action');
+                        const quiz = quizzes.find(q => q.id === id);
+
+                        if (action === 'delete') {
+                            deleteQuiz(id);
+                        } else if (action === 'load' && quiz) {
+                            // Clear input field and hide save/export button as we are testing a saved item
+                            rawQuizInput.value = '';
+                            saveButton.classList.add('hidden'); 
+                            exportButton.classList.add('hidden');
+                            
+                            // Load the saved quiz into the currentQuizBatch for single view
+                            setupQuizBatch([quiz]);
+                            showMessage(`Quiz "${quiz.question.substring(0, 30)}..." loaded for testing.`);
+                        }
+                    });
+                });
+
+            }, (error) => {
+                console.error("Firestore listener error: ", error);
+                savedQuizzesList.innerHTML = `<p class="text-red-500">Error loading quizzes: ${error.message}</p>`;
+            });
+        }
+
+        // --- Initialization and Event Handlers ---
+
+        /** Initializes Firebase and sets up authentication. */
+        async function initializeFirebase() {
+            try {
+                // Check if the placeholder config is being used
+                if (firebaseConfig.apiKey === "dummy") {
+                    authStatus.textContent = "Offline (No Database Config)";
+                    authStatus.classList.replace('text-red-500', 'text-yellow-600');
+                    userIdDisplay.textContent = "LOCAL_USER";
+                    return; // Stop initialization to prevent database errors
+                }
+
+
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in using the custom token or anonymously if no token exists
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Wait for auth state change to get the final user ID
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        authStatus.textContent = "Connected";
+                        authStatus.classList.replace('text-red-500', 'text-green-600');
+                        userIdDisplay.textContent = userId;
+                        // Start listening for quiz data after successful auth
+                        setupQuizListener();
+                    } else {
+                        authStatus.textContent = "Not Authenticated";
+                        userIdDisplay.textContent = "N/A";
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                authStatus.textContent = `Failed: ${error.code || error.message}`;
+                userIdDisplay.textContent = "ERROR";
+                showMessage(`Database initialization failed: ${error.message}`, true);
+            }
+        }
+
+        // Event listener for the Parse button
+        parseButton.addEventListener('click', () => {
+            const rawText = rawQuizInput.value;
+            let quizBatch = null;
+            
+            inputError.classList.add('hidden'); // Reset error message
+
+            if (currentFormat === 'answer-key') {
+                quizBatch = parseAnswerKeyFormat(rawText);
+            } else if (currentFormat === 'asterisk-mark') {
+                quizBatch = parseAsteriskFormat(rawText);
+            } else if (currentFormat === 'canvas') {
+                quizBatch = parseCanvasFormat(rawText); 
+            }
+
+            if (quizBatch && quizBatch.length > 0) {
+                setupQuizBatch(quizBatch); // Dupe check is inside setupQuizBatch
+                showMessage(`Successfully parsed ${currentQuizBatch.length} quiz(zes)! Preview loaded. Click 'Save' or 'Export'.`);
+            } else if (quizBatch === null) {
+                // Error message handled inside the parser function
+                quizTestArea.innerHTML = '<p class="text-red-500 italic">Failed to parse quiz. Check the error message above.</p>';
+                saveButton.classList.add('hidden');
+                exportButton.classList.add('hidden');
+                quizActionsContainer.classList.add('hidden');
+                quizCountDisplay.textContent = 0;
+                previewCountDisplay.textContent = 0;
+                exportCountDisplay.textContent = 0;
+            } else { // quizBatch is []
+                 quizTestArea.innerHTML = '<p class="text-gray-500 italic">No valid quizzes found in the input.</p>';
+                 saveButton.classList.add('hidden');
+                 exportButton.classList.add('hidden');
+                 quizActionsContainer.classList.add('hidden');
+                 quizCountDisplay.textContent = 0;
+                 previewCountDisplay.textContent = 0;
+                 exportCountDisplay.textContent = 0;
+            }
+        });
+        
+        // Event listener for Previous button
+        prevButton.addEventListener('click', () => navigateQuiz(-1));
+
+        // Event listener for Next button
+        nextButton.addEventListener('click', () => navigateQuiz(1));
+        
+        // Event listener for Remove from Batch button
+        removeButton.addEventListener('click', () => {
+            if (currentQuizBatch.length === 0) return;
+            
+            // Show custom confirmation before removing
+            const questionText = currentQuizBatch[currentQuizIndex].question.substring(0, 50) + '...';
+            
+            // In a real application, you'd use a custom modal here instead of 'confirm'
+            if (window.confirm(`Are you sure you want to remove the current quiz (${questionText}) from the batch? This will NOT delete it from the database.`)) {
+                
+                // Remove the quiz from the batch array
+                currentQuizBatch.splice(currentQuizIndex, 1);
+                
+                // Adjust index: if we were at the end, move back one. If not, the current index now points to the next item.
+                if (currentQuizIndex >= currentQuizBatch.length && currentQuizBatch.length > 0) {
+                    currentQuizIndex = currentQuizBatch.length - 1;
+                }
+                
+                if (currentQuizBatch.length > 0) {
+                    // Re-render the new current quiz and update status
+                    setupQuizBatch(currentQuizBatch);
+                    showMessage(`Quiz removed. ${currentQuizBatch.length} quiz(zes) remaining in batch.`);
+                } else {
+                    // Batch is empty
+                    currentQuizBatch = [];
+                    currentQuizIndex = 0;
+                    quizTestArea.innerHTML = '<p class="text-gray-500 italic">Batch is empty. Paste new text or import a file.</p>';
+                    saveButton.classList.add('hidden');
+                    exportButton.classList.add('hidden');
+                    quizActionsContainer.classList.add('hidden');
+                    updateNavigationButtons();
+                    showMessage("Batch cleared.", false);
+                }
+            }
+        });
+
+
+        // Event listener for the Save button
+        saveButton.addEventListener('click', () => {
+            if (currentQuizBatch.length > 0) {
+                saveQuizBatch(currentQuizBatch);
+            } else {
+                showMessage("No quizzes to save. Please parse a batch first.", true);
+            }
+        });
+        
+        // Event listener for the Export button
+        exportButton.addEventListener('click', () => {
+            if (currentQuizBatch.length > 0) {
+                // Clean up data for export (remove internal flags like isCorrect from options)
+                const dataToExport = currentQuizBatch.map(quiz => ({
+                    question: quiz.question,
+                    options: quiz.options.map(opt => ({ key: opt.key, text: opt.text })),
+                    correctAnswers: quiz.correctAnswers
+                }));
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                exportJsonFile(dataToExport, `quiz_export_${timestamp}.json`);
+            } else {
+                showMessage("No quizzes to export. Please parse a batch first.", true);
+            }
+        });
+
+        // Event listener for the Import button (Clicking this triggers the hidden file input)
+        importButton.addEventListener('click', () => {
+            jsonImportFile.click(); // Trigger the hidden file input dialog
+        });
+
+        // Event listener for the hidden file input (When a file is selected)
+        jsonImportFile.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+            
+            loadingOverlay.classList.remove('hidden');
+            
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                try {
+                    const jsonString = e.target.result;
+                    const importedData = JSON.parse(jsonString);
+                    
+                    const validBatch = validateAndNormalizeImportedData(importedData);
+                    
+                    if (validBatch) {
+                        setupQuizBatch(validBatch); // Use setupQuizBatch for single quiz view
+                        showMessage(`Successfully imported ${currentQuizBatch.length} valid quiz(zes) from file!`);
+                    }
+                    
+                } catch (error) {
+                    console.error("Error reading or parsing JSON file:", error);
+                    showMessage("Import Error: Invalid JSON file structure. Please ensure the file contains an array of quizzes.", true);
+                } finally {
+                    loadingOverlay.classList.add('hidden');
+                    // Reset file input to allow re-importing the same file if needed
+                    event.target.value = null; 
+                }
+            };
+            
+            reader.onerror = () => {
+                loadingOverlay.classList.add('hidden');
+                showMessage("Import Error: Failed to read file.", true);
+            };
+            
+            reader.readAsText(file);
+        });
+
+
+        // Initialize on window load
+        window.onload = initializeFirebase;
+    </script>
+</body>
+</html>
