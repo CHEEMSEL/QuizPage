@@ -53,10 +53,31 @@
             
             <div id="import-status" class="mt-4 text-center p-3 rounded-lg hidden"></div>
         </div>
+        
+        <!-- Configuration Menu (New Section) -->
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10 border border-indigo-100">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">2. Cài Đặt Kiểm Tra</h2>
+            <div class="space-y-4">
+                
+                <!-- Randomize Questions -->
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <label for="randomize-questions" class="text-lg font-medium text-gray-700">Ngẫu nhiên hóa thứ tự câu hỏi</label>
+                    <input type="checkbox" id="randomize-questions" class="h-6 w-6 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                </div>
+
+                <!-- Randomize Options -->
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <label for="randomize-options" class="text-lg font-medium text-gray-700">Ngẫu nhiên hóa thứ tự đáp án</label>
+                    <input type="checkbox" id="randomize-options" class="h-6 w-6 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                </div>
+            </div>
+            <p class="text-sm text-gray-500 mt-4 italic">Lưu ý: Các cài đặt này sẽ được áp dụng khi bạn tải file JSON hoặc nhấp vào "Làm Bài Lại".</p>
+        </div>
+
 
         <!-- Quiz Test Area -->
         <div id="test-container" class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10 hidden">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">2. Bài Kiểm Tra <span id="quiz-title" class="text-indigo-600"></span></h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">3. Bài Kiểm Tra <span id="quiz-title" class="text-indigo-600"></span></h2>
             
             <div id="quiz-area" class="space-y-8">
                 <!-- Quizzes will be rendered here -->
@@ -71,7 +92,7 @@
 
         <!-- Results Summary Section -->
         <div id="results-container" class="bg-indigo-50 p-6 sm:p-8 rounded-xl shadow-2xl mb-10 hidden border-4 border-indigo-200">
-            <h2 class="text-2xl font-bold text-indigo-800 mb-4 border-b border-indigo-300 pb-2">3. Kết Quả Kiểm Tra</h2>
+            <h2 class="text-2xl font-bold text-indigo-800 mb-4 border-b border-indigo-300 pb-2">4. Kết Quả Kiểm Tra</h2>
             <div id="results-summary" class="text-center text-lg space-y-2">
                 <!-- Summary will be displayed here -->
             </div>
@@ -94,12 +115,89 @@
         const resultsContainer = document.getElementById('results-container');
         const resultsSummary = document.getElementById('results-summary');
         const restartButton = document.getElementById('restart-button');
+        
+        // Configuration Checkboxes
+        const randomizeQuestionsCheckbox = document.getElementById('randomize-questions');
+        const randomizeOptionsCheckbox = document.getElementById('randomize-options');
 
-        let quizData = [];
-        let userSelections = {}; // Store user selected options: { qIndex: [key1, key2, ...] }
+        let originalQuizData = []; // Store the imported data without modification
+        let quizData = [];          // Quiz data currently being rendered (potentially randomized)
+        let userSelections = {};    // Store user selected options: { qIndex: [key1, key2, ...] }
         let isSubmitted = false;
-
+        
         // --- Helper Functions ---
+        
+        /** Fisher-Yates (Knuth) Shuffle for arrays */
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /** Saves configuration state to localStorage. */
+        function saveConfig() {
+            const config = {
+                randomizeQuestions: randomizeQuestionsCheckbox.checked,
+                randomizeOptions: randomizeOptionsCheckbox.checked
+            };
+            // Use local storage to persist user settings
+            localStorage.setItem('quizTestConfig', JSON.stringify(config));
+        }
+
+        /** Loads configuration state from localStorage. */
+        function loadConfig() {
+            const savedConfig = localStorage.getItem('quizTestConfig');
+            if (savedConfig) {
+                try {
+                    const config = JSON.parse(savedConfig);
+                    randomizeQuestionsCheckbox.checked = config.randomizeQuestions || false;
+                    randomizeOptionsCheckbox.checked = config.randomizeOptions || false;
+                } catch (e) {
+                    console.error("Lỗi tải cấu hình từ localStorage:", e);
+                }
+            }
+        }
+        
+        /** Apply randomization based on current config settings */
+        function applyRandomization(data) {
+            // Deep copy to ensure originalQuizData remains untouched
+            let randomizedData = JSON.parse(JSON.stringify(data)); 
+
+            // 1. Randomize Options
+            if (randomizeOptionsCheckbox.checked) {
+                randomizedData.forEach(quiz => {
+                    // Shuffle the options array
+                    quiz.options = shuffleArray(quiz.options);
+                    
+                    // Assign new display keys (A, B, C...) based on the new order
+                    const keyMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                    quiz.options.forEach((opt, idx) => {
+                        // Add a temporary 'displayKey' property for rendering
+                        opt.displayKey = keyMap[idx];
+                    });
+                });
+            } else {
+                // Ensure options are sorted by their original key and assigned correct display key if not randomizing
+                randomizedData.forEach(quiz => {
+                     // Sort options by original key (A, B, C, ...)
+                     quiz.options.sort((a, b) => a.key.localeCompare(b.key));
+                     quiz.options.forEach(opt => {
+                        // Use original key as display key
+                        opt.displayKey = opt.key;
+                     });
+                });
+            }
+
+            // 2. Randomize Questions
+            if (randomizeQuestionsCheckbox.checked) {
+                randomizedData = shuffleArray(randomizedData);
+            }
+            
+            return randomizedData;
+        }
+
 
         /** Shows a temporary message in the status area. */
         function showMessage(element, text, isError = false) {
@@ -110,7 +208,6 @@
 
         /**
          * Validates and normalizes imported JSON data structure for the test environment.
-         * The structure must match the saved format: { question: string, options: array, correctAnswers: array }
          */
         function validateAndNormalizeImportedData(importedData) {
             if (!Array.isArray(importedData)) return null;
@@ -125,18 +222,18 @@
                                 quiz.correctAnswers.length > 0;
                                 
                 if (isValid) {
-                    // Ensure each option has the isCorrect flag for submission check
+                    // Normalize options structure to include isCorrect flag and a temporary displayKey
                     const normalizedOptions = quiz.options.map(opt => ({
-                        key: opt.key,
+                        key: opt.key, // Original key (A, B, C) - used for internal logic (checking answer)
                         text: opt.text,
-                        // This check ensures compatibility even if the export data structure is slightly off
-                        isCorrect: quiz.correctAnswers.includes(opt.key)
+                        isCorrect: quiz.correctAnswers.includes(opt.key),
+                        displayKey: opt.key // Default display key (will be set correctly in applyRandomization)
                     }));
                     
                     validBatch.push({
                         ...quiz,
                         options: normalizedOptions,
-                        quizIndex: index // Assign a unique index
+                        quizIndex: index // Assign a unique index for tracking user selections in original data
                     });
                 }
             });
@@ -148,6 +245,9 @@
         function renderQuizzes() {
             quizArea.innerHTML = '';
             userSelections = {};
+            
+            // Apply current config to the original data before rendering
+            quizData = applyRandomization(originalQuizData);
             
             quizData.forEach((quiz, index) => {
                 const quizElement = document.createElement('div');
@@ -163,11 +263,11 @@
                         ${quiz.options.map(option => `
                             <button
                                 data-index="${index}"
-                                data-key="${option.key}"
+                                data-original-key="${option.key}" 
                                 data-correct="${option.isCorrect}"
                                 class="option-button w-full text-left p-4 border border-gray-300 rounded-lg bg-white text-gray-800 hover:bg-gray-100 font-medium transition duration-150"
                             >
-                                <span class="font-bold mr-2">${option.key}.</span> ${option.text}
+                                <span class="font-bold mr-2">${option.displayKey}.</span> ${option.text}
                             </button>
                         `).join('')}
                     </div>
@@ -192,7 +292,8 @@
                 const button = e.target.closest('.option-button');
                 if (!button) return;
 
-                const key = button.getAttribute('data-key');
+                // Use the ORIGINAL key for selection tracking
+                const originalKey = button.getAttribute('data-original-key');
                 const isMultiSelect = quiz.correctAnswers.length > 1;
 
                 const optionButtons = optionsContainer.querySelectorAll('.option-button');
@@ -200,17 +301,17 @@
                 
                 if (!isMultiSelect) {
                     // Single choice: deselect others
-                    currentSelections = [key]; 
+                    currentSelections = [originalKey]; 
                     optionButtons.forEach(btn => btn.classList.remove('option-selected'));
                     button.classList.add('option-selected');
                 } else {
                     // Multiple choice: toggle selection
-                    const idx = currentSelections.indexOf(key);
+                    const idx = currentSelections.indexOf(originalKey);
                     if (idx > -1) {
                         currentSelections.splice(idx, 1);
                         button.classList.remove('option-selected');
                     } else {
-                        currentSelections.push(key);
+                        currentSelections.push(originalKey);
                         button.classList.add('option-selected');
                     }
                 }
@@ -227,6 +328,7 @@
             const totalQuizzes = quizData.length;
 
             quizData.forEach((quiz, index) => {
+                // User selections are stored by original key
                 const userKeys = userSelections[index] || [];
                 const correctKeys = quiz.correctAnswers;
                 const optionsContainer = document.getElementById(`options-container-${index}`);
@@ -241,9 +343,11 @@
 
                 // 2. Update UI for feedback
                 optionButtons.forEach(button => {
-                    const key = button.getAttribute('data-key');
-                    const isUserSelected = userKeys.includes(key);
-                    const isActualCorrect = correctKeys.includes(key);
+                    // Use the ORIGINAL key to check against correctAnswers
+                    const originalKey = button.getAttribute('data-original-key');
+                    const displayKey = button.querySelector('span').textContent.slice(0, -1); // Extract A, B, C... from <span>A.</span>
+                    const isUserSelected = userKeys.includes(originalKey);
+                    const isActualCorrect = correctKeys.includes(originalKey);
                     
                     button.classList.remove('option-selected'); // Clear user selection color
 
@@ -258,7 +362,7 @@
                 // 3. Display per-question feedback
                 const statusIcon = isCorrect ? '✅' : '❌';
                 const correctDisplay = correctKeys.join(', ');
-                feedbackElement.innerHTML = `${statusIcon} Đáp án: ${isCorrect ? 'ĐÚNG' : 'SAI'}. Đáp án đúng là: <span class="text-green-600">${correctDisplay}</span>.`;
+                feedbackElement.innerHTML = `${statusIcon} Đáp án: ${isCorrect ? 'ĐÚNG' : 'SAI'}. Đáp án đúng (mã gốc) là: <span class="text-green-600">${correctDisplay}</span>.`;
                 feedbackElement.classList.remove('hidden');
                 feedbackElement.className = `mt-3 text-md font-semibold ${isCorrect ? 'text-green-700' : 'text-red-700'}`;
             });
@@ -295,13 +399,17 @@
                     const validBatch = validateAndNormalizeImportedData(importedData);
                     
                     if (validBatch && validBatch.length > 0) {
-                        quizData = validBatch;
-                        document.getElementById('quiz-title').textContent = `(${quizData.length} Câu)`;
-                        renderQuizzes();
+                        originalQuizData = validBatch; // Save original data
+                        
+                        document.getElementById('quiz-title').textContent = `(${originalQuizData.length} Câu)`;
+                        
+                        isSubmitted = false;
+                        // Render the quizzes, applying randomization based on current config
+                        renderQuizzes(); 
+                        
                         testContainer.classList.remove('hidden');
                         resultsContainer.classList.add('hidden');
-                        isSubmitted = false;
-                        showMessage(importStatus, `Thành công! Đã tải ${validBatch.length} câu hỏi. Bắt đầu làm bài.`);
+                        showMessage(importStatus, `Thành công! Đã tải ${originalQuizData.length} câu hỏi. Bắt đầu làm bài.`);
                         window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
                     } else {
                         showMessage(importStatus, "Lỗi nhập file: Không tìm thấy câu hỏi hợp lệ nào trong file JSON.", true);
@@ -312,6 +420,8 @@
                     showMessage(importStatus, "Lỗi nhập file: Cấu trúc file JSON không hợp lệ.", true);
                 } finally {
                     loadingOverlay.classList.add('hidden');
+                    // Reset file input to allow re-importing the same file if needed
+                    event.target.value = null; 
                 }
             };
             
@@ -326,13 +436,15 @@
         // Handle quiz submission
         submitButton.addEventListener('click', checkAndShowResults);
         
-        // Handle restart
+        // Handle restart/re-randomize
         restartButton.addEventListener('click', () => {
-            if (quizData.length > 0) {
+            if (originalQuizData.length > 0) {
                 isSubmitted = false;
                 resultsContainer.classList.add('hidden');
-                renderQuizzes(); // Re-render the quiz to clear selections and feedback
+                // Re-render the quiz to clear selections, feedback, and apply randomization
+                renderQuizzes(); 
                 window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
+                showMessage(importStatus, "Đã làm bài lại! Đã áp dụng các cài đặt ngẫu nhiên hóa mới (nếu có).");
             } else {
                  testContainer.classList.add('hidden');
                  resultsContainer.classList.add('hidden');
@@ -340,8 +452,23 @@
             }
         });
         
-        // Initial state cleanup
+        // Handle config changes (Save and re-render if quiz data is loaded)
+        function handleConfigChange() {
+            saveConfig();
+            // Only re-render if data is loaded AND the quiz hasn't been submitted yet
+            if (originalQuizData.length > 0 && !isSubmitted) { 
+                renderQuizzes();
+                showMessage(importStatus, "Đã cập nhật cài đặt! Thứ tự câu hỏi/đáp án đã được thay đổi.");
+            }
+        }
+        
+        randomizeQuestionsCheckbox.addEventListener('change', handleConfigChange);
+        randomizeOptionsCheckbox.addEventListener('change', handleConfigChange);
+
+
+        // Initial state cleanup and config load
         window.onload = () => {
+            loadConfig(); // Load settings when page loads
             testContainer.classList.add('hidden');
             resultsContainer.classList.add('hidden');
         };
