@@ -510,7 +510,6 @@ Kinh tế chính trị Mác – Lênin ra đời ở thế kỷ nào?
             let state = 'WAITING_FOR_QUESTION'; // States: WAITING_FOR_QUESTION, WAITING_FOR_POINTS, READING_QUESTION, READING_OPTIONS
             
             const questionStartRegex = /^\s*Question\s*\d+/i; // Match "Question 1"
-            const pointMarkerRegex = /^\d+\.\d+\s*\/\s*\d+\.\d+\s*pts$/; // Match "0.3 / 0.3 pts"
             const correctMarker = /\s*\*\s*$/; // Match asterisk marker *
             
             const keyMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -519,8 +518,6 @@ Kinh tế chính trị Mác – Lênin ra đời ở thế kỷ nào?
             lines.forEach(line => {
                 const trimmedLine = line.trim();
                 const isQuestionStart = questionStartRegex.test(trimmedLine);
-                const isPointMarker = pointMarkerRegex.test(trimmedLine);
-                
                 if (isQuestionStart) {
                     // Save previous quiz
                     if (currentQuiz && currentQuiz.options.length > 0) {
@@ -539,7 +536,7 @@ Kinh tế chính trị Mác – Lênin ra đời ở thế kỷ nào?
                 }
 
                 if (currentQuiz) {
-                    if (state === 'WAITING_FOR_POINTS' && isPointMarker) {
+                    if (state === 'WAITING_FOR_POINTS') {
                         // Skip the points line, move to reading the question
                         state = 'READING_QUESTION';
                         return;
