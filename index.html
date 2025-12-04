@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pop Quiz Generator</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom styles for better visual feedback */
@@ -54,14 +55,17 @@
             Pop Quiz Manager <span class="text-indigo-600">v2.3 (With Canvas Parser & Dupe Check)</span>
         </h1>
 
+        <!-- User Info & Authentication Status -->
         <div class="mb-6 p-4 bg-white shadow-md rounded-lg text-sm">
             <p class="text-gray-700">Database Ready: <span id="auth-status" class="font-semibold text-red-500">Connecting...</span></p>
             <p class="text-gray-700">Your User ID (for sharing data): <span id="user-id-display" class="font-mono text-xs bg-gray-100 p-1 rounded">Waiting for auth...</span></p>
         </div>
 
+        <!-- Quiz Creation Section -->
         <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">1. Create/Parse Quizzes</h2>
 
+            <!-- Tab/Format Selector -->
             <div class="flex border-b border-gray-200 mb-4 overflow-x-auto">
                 <button data-format="answer-key" class="tab-button px-4 py-2 text-sm font-medium active">
                     Format 1: (Đáp án: A, C)
@@ -74,6 +78,7 @@
                 </button>
             </div>
             
+            <!-- Input Area -->
             <textarea id="raw-quiz-input" rows="8" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700" placeholder="Paste your quiz text here.
 
 Format 1 Example (Single Question):
@@ -103,23 +108,27 @@ C. Option C *"></textarea>
                     Save All <span id="quiz-count-display">0</span> Quizzes
                 </button>
                 
+                <!-- Import JSON Button and hidden file input -->
                 <input type="file" id="json-import-file" accept=".json" class="hidden">
                 <button id="import-button" class="w-full sm:w-auto px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition duration-150 shadow-md">
                     Import from JSON
                 </button>
                 
+                <!-- Export/Download Button - Renamed for clarity -->
                 <button id="export-button" class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-150 shadow-md hidden" disabled>
                     Download/Export <span id="export-count-display">0</span> Quizzes (JSON)
                 </button>
             </div>
         </div>
 
+        <!-- Quiz Preview/Test Section -->
         <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">
                 2. Quiz Preview / Test 
                 <span id="preview-status" class="text-base text-indigo-600 font-normal">(Question <span id="current-quiz-index-display">0</span> of <span id="preview-count">0</span>)</span>
             </h2>
             
+            <!-- Navigation and Action Buttons -->
             <div id="quiz-actions" class="flex justify-between items-center mb-4 space-x-2 hidden">
                 <div class="flex space-x-2">
                     <button id="prev-button" class="nav-button px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition duration-150" disabled>
@@ -139,9 +148,20 @@ C. Option C *"></textarea>
             </div>
             <div id="quiz-message" class="mt-4 text-center p-3 rounded-lg hidden"></div>
         </div>
+        
+        <!-- Test Environment Link Section -->
+        <div class="bg-indigo-50 p-6 sm:p-8 rounded-xl shadow-2xl mb-10 border-4 border-indigo-200">
+            <h2 class="text-2xl font-bold text-indigo-800 mb-4">3. Test Environment</h2>
+            <p class="text-gray-700 mb-4">Export quizzes (JSON) và sử dụng nút dưới đây để chuyển sang môi trường làm bài kiểm tra riêng biệt.</p>
+            <a href="test.html" target="_blank" id="open-test-env-button" class="inline-block w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold text-lg rounded-lg hover:bg-indigo-700 transition duration-150 shadow-xl">
+                Open Test Environment &rarr;
+            </a>
+        </div>
 
+
+        <!-- Saved Quizzes List -->
         <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">3. Saved Quizzes (CRUD Operations)</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">4. Saved Quizzes (CRUD Operations)</h2>
             <p class="text-sm text-gray-500 mb-4">Your quizzes are saved privately using your User ID.</p>
             <div id="saved-quizzes-list" class="space-y-4">
                 <p class="text-gray-500 italic">No quizzes saved yet, or connecting to the database...</p>
@@ -149,6 +169,7 @@ C. Option C *"></textarea>
         </div>
     </div>
 
+    <!-- Firebase SDK Imports (required for database operations) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
