@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Test Environment</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better visual feedback */
+        .option-button {
+            transition: all 0.1s;
+            cursor: pointer;
+        }
+        .option-button:hover {
+            box-shadow: 0 0 10px rgba(79, 70, 229, 0.5); /* Shadow for hover */
+            transform: translateY(-1px);
+        }
+        .option-selected {
+            background-color: #C7D2FE !important; /* Indigo 200 */
+            border-color: #4F46E5 !important;
+        }
+        .option-correct {
+            background-color: #10B981 !important; /* Green 500 */
+            color: white !important;
+            border-color: #059669 !important;
+        }
+        .option-incorrect {
+            background-color: #EF4444 !important; /* Red 500 */
+            color: white !important;
+            border-color: #DC2626 !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans p-4 sm:p-8">
+
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 z-50 flex items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <p class="ml-4 text-indigo-600">Loading Quiz...</p>
+    </div>
+
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">
+            Môi Trường Làm Bài Kiểm Tra (Test Environment)
+        </h1>
+        <p class="text-center text-gray-600 mb-8">Tải lên file JSON (đã xuất từ trang chính) để bắt đầu kiểm tra.</p>
+
+        <!-- Quiz Import Section -->
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">1. Import Bài Kiểm Tra</h2>
+            
+            <input type="file" id="json-import-file" accept=".json" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700">
+            
+            <div id="import-status" class="mt-4 text-center p-3 rounded-lg hidden"></div>
+        </div>
+
+        <!-- Quiz Test Area -->
+        <div id="test-container" class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">2. Bài Kiểm Tra <span id="quiz-title" class="text-indigo-600"></span></h2>
+            
+            <div id="quiz-area" class="space-y-8">
+                <!-- Quizzes will be rendered here -->
+            </div>
+
+            <div class="mt-8 text-center">
+                <button id="submit-quiz-button" class="px-8 py-3 bg-green-600 text-white font-bold text-lg rounded-lg hover:bg-green-700 transition duration-150 shadow-lg" disabled>
+                    Nộp Bài và Xem Kết Quả
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Summary Section -->
+        <div id="results-container" class="bg-indigo-50 p-6 sm:p-8 rounded-xl shadow-2xl mb-10 hidden border-4 border-indigo-200">
+            <h2 class="text-2xl font-bold text-indigo-800 mb-4 border-b border-indigo-300 pb-2">3. Kết Quả Kiểm Tra</h2>
+            <div id="results-summary" class="text-center text-lg space-y-2">
+                <!-- Summary will be displayed here -->
+            </div>
+            <div class="mt-6 text-center">
+                 <button id="restart-button" class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md">
+                    Làm Bài Lại
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const fileInput = document.getElementById('json-import-file');
+        const importStatus = document.getElementById('import-status');
+        const testContainer = document.getElementById('test-container');
+        const quizArea = document.getElementById('quiz-area');
+        const submitButton = document.getElementById('submit-quiz-button');
+        const resultsContainer = document.getElementById('results-container');
+        const resultsSummary = document.getElementById('results-summary');
+        const restartButton = document.getElementById('restart-button');
+
+        let quizData = [];
+        let userSelections = {}; // Store user selected options: { qIndex: [key1, key2, ...] }
+        let isSubmitted = false;
+
+        // --- Helper Functions ---
+
+        /** Shows a temporary message in the status area. */
+        function showMessage(element, text, isError = false) {
+            element.textContent = text;
+            element.className = `mt-4 text-center p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            element.classList.remove('hidden');
+        }
+
+        /**
+         * Validates and normalizes imported JSON data structure for the test environment.
+         * The structure must match the saved format: { question: string, options: array, correctAnswers: array }
+         */
+        function validateAndNormalizeImportedData(importedData) {
+            if (!Array.isArray(importedData)) return null;
+            
+            const validBatch = [];
+            
+            importedData.forEach((quiz, index) => {
+                const isValid = quiz.question && 
+                                Array.isArray(quiz.options) && 
+                                quiz.options.every(opt => opt.key && opt.text) &&
+                                Array.isArray(quiz.correctAnswers) &&
+                                quiz.correctAnswers.length > 0;
+                                
+                if (isValid) {
+                    // Ensure each option has the isCorrect flag for submission check
+                    const normalizedOptions = quiz.options.map(opt => ({
+                        key: opt.key,
+                        text: opt.text,
+                        // This check ensures compatibility even if the export data structure is slightly off
+                        isCorrect: quiz.correctAnswers.includes(opt.key)
+                    }));
+                    
+                    validBatch.push({
+                        ...quiz,
+                        options: normalizedOptions,
+                        quizIndex: index // Assign a unique index
+                    });
+                }
+            });
+            
+            return validBatch.length > 0 ? validBatch : null;
+        }
+
+        /** Renders all quizzes in the quiz area. */
+        function renderQuizzes() {
+            quizArea.innerHTML = '';
+            userSelections = {};
+            
+            quizData.forEach((quiz, index) => {
+                const quizElement = document.createElement('div');
+                quizElement.id = `quiz-${index}`;
+                quizElement.className = 'space-y-4 p-4 border border-gray-200 rounded-lg shadow-md';
+
+                const questionHTML = `
+                    <div class="p-3 bg-gray-100 rounded-lg">
+                        <p class="text-lg font-bold text-gray-800 mb-2">Câu hỏi ${index + 1} / ${quizData.length}:</p>
+                        <p class="text-xl font-semibold text-gray-900">${quiz.question}</p>
+                    </div>
+                    <div id="options-container-${index}" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        ${quiz.options.map(option => `
+                            <button
+                                data-index="${index}"
+                                data-key="${option.key}"
+                                data-correct="${option.isCorrect}"
+                                class="option-button w-full text-left p-4 border border-gray-300 rounded-lg bg-white text-gray-800 hover:bg-gray-100 font-medium transition duration-150"
+                            >
+                                <span class="font-bold mr-2">${option.key}.</span> ${option.text}
+                            </button>
+                        `).join('')}
+                    </div>
+                    <div id="feedback-${index}" class="mt-3 text-md font-semibold hidden"></div>
+                `;
+                quizElement.innerHTML = questionHTML;
+                quizArea.appendChild(quizElement);
+                attachQuizEventListeners(index);
+            });
+            
+            submitButton.disabled = false;
+        }
+
+        /** Attaches event listeners for a single quiz. */
+        function attachQuizEventListeners(index) {
+            const optionsContainer = document.getElementById(`options-container-${index}`);
+            const quiz = quizData[index];
+            
+            optionsContainer.addEventListener('click', (e) => {
+                if (isSubmitted) return;
+
+                const button = e.target.closest('.option-button');
+                if (!button) return;
+
+                const key = button.getAttribute('data-key');
+                const isMultiSelect = quiz.correctAnswers.length > 1;
+
+                const optionButtons = optionsContainer.querySelectorAll('.option-button');
+                let currentSelections = userSelections[index] || [];
+                
+                if (!isMultiSelect) {
+                    // Single choice: deselect others
+                    currentSelections = [key]; 
+                    optionButtons.forEach(btn => btn.classList.remove('option-selected'));
+                    button.classList.add('option-selected');
+                } else {
+                    // Multiple choice: toggle selection
+                    const idx = currentSelections.indexOf(key);
+                    if (idx > -1) {
+                        currentSelections.splice(idx, 1);
+                        button.classList.remove('option-selected');
+                    } else {
+                        currentSelections.push(key);
+                        button.classList.add('option-selected');
+                    }
+                }
+                
+                userSelections[index] = currentSelections;
+            });
+        }
+        
+        /** Compares user selections with correct answers and updates the UI. */
+        function checkAndShowResults() {
+            isSubmitted = true;
+            submitButton.disabled = true;
+            let correctCount = 0;
+            const totalQuizzes = quizData.length;
+
+            quizData.forEach((quiz, index) => {
+                const userKeys = userSelections[index] || [];
+                const correctKeys = quiz.correctAnswers;
+                const optionsContainer = document.getElementById(`options-container-${index}`);
+                const feedbackElement = document.getElementById(`feedback-${index}`);
+                const optionButtons = optionsContainer.querySelectorAll('.option-button');
+
+                // 1. Determine correctness
+                const isCorrect = userKeys.sort().join(',') === correctKeys.sort().join(',');
+                if (isCorrect) {
+                    correctCount++;
+                }
+
+                // 2. Update UI for feedback
+                optionButtons.forEach(button => {
+                    const key = button.getAttribute('data-key');
+                    const isUserSelected = userKeys.includes(key);
+                    const isActualCorrect = correctKeys.includes(key);
+                    
+                    button.classList.remove('option-selected'); // Clear user selection color
+
+                    if (isActualCorrect) {
+                        button.classList.add('option-correct'); // Mark actual correct answers
+                    } else if (isUserSelected && !isActualCorrect) {
+                        button.classList.add('option-incorrect'); // Mark user's incorrect choice
+                    }
+                    button.disabled = true; // Disable all buttons after submission
+                });
+                
+                // 3. Display per-question feedback
+                const statusIcon = isCorrect ? '✅' : '❌';
+                const correctDisplay = correctKeys.join(', ');
+                feedbackElement.innerHTML = `${statusIcon} Đáp án: ${isCorrect ? 'ĐÚNG' : 'SAI'}. Đáp án đúng là: <span class="text-green-600">${correctDisplay}</span>.`;
+                feedbackElement.classList.remove('hidden');
+                feedbackElement.className = `mt-3 text-md font-semibold ${isCorrect ? 'text-green-700' : 'text-red-700'}`;
+            });
+
+            // 4. Show summary
+            const percent = ((correctCount / totalQuizzes) * 100).toFixed(2);
+            resultsSummary.innerHTML = `
+                <p class="text-2xl font-bold text-indigo-700">TỔNG KẾT</p>
+                <p>Số câu đúng: <span class="font-extrabold text-green-600">${correctCount}</span> / ${totalQuizzes}</p>
+                <p>Số câu sai: <span class="font-extrabold text-red-600">${totalQuizzes - correctCount}</span> / ${totalQuizzes}</p>
+                <p class="text-3xl font-extrabold mt-4">Tỷ lệ chính xác: <span class="text-indigo-700">${percent}%</span></p>
+            `;
+            resultsContainer.classList.remove('hidden');
+            window.scrollTo({ top: resultsContainer.offsetTop, behavior: 'smooth' });
+        }
+
+
+        // --- Event Handlers ---
+        
+        // Handle file import
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            loadingOverlay.classList.remove('hidden');
+            
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                try {
+                    const jsonString = e.target.result;
+                    const importedData = JSON.parse(jsonString);
+                    
+                    const validBatch = validateAndNormalizeImportedData(importedData);
+                    
+                    if (validBatch && validBatch.length > 0) {
+                        quizData = validBatch;
+                        document.getElementById('quiz-title').textContent = `(${quizData.length} Câu)`;
+                        renderQuizzes();
+                        testContainer.classList.remove('hidden');
+                        resultsContainer.classList.add('hidden');
+                        isSubmitted = false;
+                        showMessage(importStatus, `Thành công! Đã tải ${validBatch.length} câu hỏi. Bắt đầu làm bài.`);
+                        window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
+                    } else {
+                        showMessage(importStatus, "Lỗi nhập file: Không tìm thấy câu hỏi hợp lệ nào trong file JSON.", true);
+                    }
+                    
+                } catch (error) {
+                    console.error("Error reading or parsing JSON file:", error);
+                    showMessage(importStatus, "Lỗi nhập file: Cấu trúc file JSON không hợp lệ.", true);
+                } finally {
+                    loadingOverlay.classList.add('hidden');
+                }
+            };
+            
+            reader.onerror = () => {
+                loadingOverlay.classList.add('hidden');
+                showMessage(importStatus, "Lỗi nhập file: Không thể đọc file.", true);
+            };
+            
+            reader.readAsText(file);
+        });
+
+        // Handle quiz submission
+        submitButton.addEventListener('click', checkAndShowResults);
+        
+        // Handle restart
+        restartButton.addEventListener('click', () => {
+            if (quizData.length > 0) {
+                isSubmitted = false;
+                resultsContainer.classList.add('hidden');
+                renderQuizzes(); // Re-render the quiz to clear selections and feedback
+                window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
+            } else {
+                 testContainer.classList.add('hidden');
+                 resultsContainer.classList.add('hidden');
+                 showMessage(importStatus, "Vui lòng tải file JSON để bắt đầu bài kiểm tra.", true);
+            }
+        });
+        
+        // Initial state cleanup
+        window.onload = () => {
+            testContainer.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+        };
+
+    </script>
+</body>
+</html>
