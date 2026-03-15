@@ -43,13 +43,13 @@
         <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">
             Môi Trường Làm Bài Kiểm Tra (Test Environment)
         </h1>
-        <p class="text-center text-gray-600 mb-8">Tải lên file JSON (đã xuất từ trang chính) để bắt đầu kiểm tra.</p>
+        <p class="text-center text-gray-600 mb-8">Tải lên một hoặc nhiều file JSON (đã xuất từ trang chính) để gộp và làm bài kiểm tra.</p>
 
         <!-- Quiz Import Section -->
         <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl mb-10">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">1. Import Bài Kiểm Tra</h2>
             
-            <input type="file" id="json-import-file" accept=".json" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700">
+            <input type="file" id="json-import-file" accept=".json" multiple class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700">
             
             <div id="import-status" class="mt-4 text-center p-3 rounded-lg hidden"></div>
         </div>
@@ -383,54 +383,79 @@
         // --- Event Handlers ---
         
         // Handle file import
-        fileInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
+        // Handle multiple file imports
+        fileInput.addEventListener('change', async (event) => {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
             
             loadingOverlay.classList.remove('hidden');
+            let combinedImportedData = [];
             
-            const reader = new FileReader();
-            
-            reader.onload = (e) => {
-                try {
-                    const jsonString = e.target.result;
-                    const importedData = JSON.parse(jsonString);
-                    
-                    const validBatch = validateAndNormalizeImportedData(importedData);
-                    
-                    if (validBatch && validBatch.length > 0) {
-                        originalQuizData = validBatch; // Save original data
+            try {
+                // Create an array of Promises to read all files concurrently
+                const readPromises = files.map(file => {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
                         
-                        document.getElementById('quiz-title').textContent = `(${originalQuizData.length} Câu)`;
+                        reader.onload = (e) => {
+                            try {
+                                const jsonString = e.target.result;
+                                const parsedData = JSON.parse(jsonString);
+                                resolve(parsedData);
+                            } catch (error) {
+                                reject(new Error(`Lỗi cú pháp JSON trong file: ${file.name}`));
+                            }
+                        };
                         
-                        isSubmitted = false;
-                        // Render the quizzes, applying randomization based on current config
-                        renderQuizzes(); 
+                        reader.onerror = () => {
+                            reject(new Error(`Không thể đọc file: ${file.name}`));
+                        };
                         
-                        testContainer.classList.remove('hidden');
-                        resultsContainer.classList.add('hidden');
-                        showMessage(importStatus, `Thành công! Đã tải ${originalQuizData.length} câu hỏi. Bắt đầu làm bài.`);
-                        window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
+                        reader.readAsText(file);
+                    });
+                });
+
+                // Wait for all files to be read and parsed
+                const parsedFilesData = await Promise.all(readPromises);
+                
+                // Combine all the parsed arrays into one big array
+                parsedFilesData.forEach(data => {
+                    if (Array.isArray(data)) {
+                        combinedImportedData = combinedImportedData.concat(data);
                     } else {
-                        showMessage(importStatus, "Lỗi nhập file: Không tìm thấy câu hỏi hợp lệ nào trong file JSON.", true);
+                        // If a file just contained a single object instead of an array, push it
+                        combinedImportedData.push(data);
                     }
+                });
+
+                // Validate and normalize the combined massive list
+                const validBatch = validateAndNormalizeImportedData(combinedImportedData);
+                
+                if (validBatch && validBatch.length > 0) {
+                    originalQuizData = validBatch; // Save original data
                     
-                } catch (error) {
-                    console.error("Error reading or parsing JSON file:", error);
-                    showMessage(importStatus, "Lỗi nhập file: Cấu trúc file JSON không hợp lệ.", true);
-                } finally {
-                    loadingOverlay.classList.add('hidden');
-                    // Reset file input to allow re-importing the same file if needed
-                    event.target.value = null; 
+                    document.getElementById('quiz-title').textContent = `(${originalQuizData.length} Câu)`;
+                    
+                    isSubmitted = false;
+                    // Render the quizzes, applying randomization based on current config
+                    renderQuizzes(); 
+                    
+                    testContainer.classList.remove('hidden');
+                    resultsContainer.classList.add('hidden');
+                    showMessage(importStatus, `Thành công! Đã gộp và tải ${originalQuizData.length} câu hỏi từ ${files.length} file.`);
+                    window.scrollTo({ top: testContainer.offsetTop, behavior: 'smooth' });
+                } else {
+                    showMessage(importStatus, "Lỗi nhập file: Không tìm thấy câu hỏi hợp lệ nào trong các file JSON đã chọn.", true);
                 }
-            };
-            
-            reader.onerror = () => {
+                
+            } catch (error) {
+                console.error("Lỗi khi đọc file:", error);
+                showMessage(importStatus, error.message || "Lỗi hệ thống khi tải file.", true);
+            } finally {
                 loadingOverlay.classList.add('hidden');
-                showMessage(importStatus, "Lỗi nhập file: Không thể đọc file.", true);
-            };
-            
-            reader.readAsText(file);
+                // Reset file input to allow re-importing the same files if needed
+                event.target.value = null; 
+            }
         });
 
         // Handle quiz submission
